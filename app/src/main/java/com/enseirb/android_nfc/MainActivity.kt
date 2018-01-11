@@ -4,12 +4,13 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.Intent
+import android.nfc.NdefMessage
+import android.nfc.NdefRecord
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.support.v7.app.AppCompatActivity
 import android.widget.TextView
 import java.io.IOException
-import java.io.InputStream
 import java.io.OutputStream
 import java.util.*
 import java.util.logging.Logger
@@ -22,8 +23,8 @@ class MainActivity : AppCompatActivity() {
     private var socket: BluetoothSocket? = null
     private var mBluetoothAdapter: BluetoothAdapter? = null
     private var outputStream: OutputStream? = null
-    private var inStream: InputStream? = null
     private var Log = Logger.getLogger(MainActivity::class.java.name)
+    private var theadRead: BluetoothReceive? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,11 +43,20 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        mNfcAdapter = NfcAdapter.getDefaultAdapter(this)
+        val test = "{'list': [{'type': 'wifi', 'service': 'networkWifi'," +
+                "'name':'réseau wifi', 'ssid': 'RSR'," +
+                "'password': 'rsrL4s3r!'}, {'type': 'toto'}]}"
+        val pathPrefix = "nfc.com:clientNFC"
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
         this.connectBluetooth()
         val res = NFCUtil.retrieveNFCMessage(intent)
-        Log.warning(res)
+        val nfcRecord = NdefRecord(NdefRecord.TNF_EXTERNAL_TYPE, pathPrefix.toByteArray(),
+                ByteArray(0), test.toByteArray())
+        val nfcMessage = NdefMessage(arrayOf(nfcRecord))
+        if(mNfcAdapter != null) {
+            Log.warning("ok");
+            mNfcAdapter?.setNdefPushMessage(nfcMessage, this)
+        }
         val text = findViewById(R.id.resultTextView) as TextView
         text.text = res
         if(res == "chambre 1"){
@@ -63,6 +73,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        Log.warning("pause")
         mNfcAdapter?.let {
             NFCUtil.disableNFCInForeground(it, this)
         }
@@ -70,13 +81,27 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        Log.warning("stop")
         write("close")
-        socket!!.close()
+        theadRead?.interrupt()
+        if(socket != null)
+            socket!!.close()
     }
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
+        val test = "{'list': [{'type': 'wifi', 'service': 'networkWifi'," +
+                "'name':'réseau wifi', 'ssid': 'RSR'," +
+                "'password': 'rsrL4s3r!'}, {'type': 'toto'}]}"
+        val pathPrefix = "nfc.com:clientNFC"
         val res = NFCUtil.retrieveNFCMessage(intent)
+        val nfcRecord = NdefRecord(NdefRecord.TNF_EXTERNAL_TYPE, pathPrefix.toByteArray(),
+                ByteArray(0), test.toByteArray())
+        val nfcMessage = NdefMessage(arrayOf(nfcRecord))
+        if(mNfcAdapter != null) {
+            Log.warning("ok");
+            mNfcAdapter?.setNdefPushMessage(nfcMessage, this)
+        }
         Log.warning(res)
         val text = findViewById(R.id.resultTextView) as TextView
         text.text = res
@@ -119,7 +144,8 @@ class MainActivity : AppCompatActivity() {
                                 text.text = "Connected"
                                 socket?.let {
                                     outputStream = it.outputStream
-                                    //inStream = it.inputStream
+                                    theadRead = BluetoothReceive(it.inputStream, mNfcAdapter, this)
+                                    theadRead?.start()
                                 }
 
                             } catch (e2: Exception) {
@@ -133,5 +159,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        text.text = "ok"
     }
 }
